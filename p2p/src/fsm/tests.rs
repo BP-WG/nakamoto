@@ -29,7 +29,7 @@ use nakamoto_common::bitcoin::network::Address;
 use nakamoto_common::bitcoin_hashes::hex::FromHex;
 use nakamoto_common::block::time::Clock as _;
 use nakamoto_net::simulator::{Options, Peer as _, Simulation};
-use nakamoto_net::{Link, LocalDuration, LocalTime, StateMachine as _};
+use nakamoto_net::{Link, Duration, Instant, StateMachine as _};
 
 use quickcheck_macros::quickcheck;
 
@@ -106,7 +106,7 @@ fn test_initial_sync() {
     let height = 144;
     let network = Network::Mainnet;
     let headers = BITCOIN_HEADERS.tail[0..height].to_vec();
-    let time = LocalTime::from_block_time(headers.last().unwrap().time);
+    let time = Instant::from_block_time(headers.last().unwrap().time);
 
     assert!(headers.len() >= height);
 
@@ -391,7 +391,7 @@ fn test_handshake_verack_timeout() {
             .find(|o| matches!(o, Io::Wakeup(_)))
             .expect("a timer should be returned");
 
-        peer.elapse(LocalDuration::from_secs(60));
+        peer.elapse(Duration::from_secs(60));
         peer.outputs()
             .find(|o| {
                 matches!(o, Io::Disconnect(a, DisconnectReason::PeerTimeout("handshake")) if a == &remote.addr)
@@ -802,7 +802,7 @@ fn test_connect_to_peers_6() {
 #[test]
 fn test_submit_transactions() {
     let network = Network::Mainnet;
-    let time = LocalTime::now();
+    let time = Instant::now();
 
     let mut rng = fastrand::Rng::new();
     let mut alice = Peer::genesis("alice", [48, 48, 48, 48], network, vec![], rng.clone());
@@ -852,7 +852,7 @@ fn test_submit_transactions() {
         .find(|msg| msg == &NetworkMessage::Inv(inventory.clone()))
         .expect("Alice sends an `inv` message");
 
-    alice.elapse(LocalDuration::from_secs(30));
+    alice.elapse(Duration::from_secs(30));
     alice.received(&remote1.addr, NetworkMessage::GetData(inventory));
     alice
         .messages(&remote1.addr)
@@ -899,7 +899,7 @@ fn test_inv_rebroadcast() {
 
     // Let some time pass.
     alice.drain();
-    alice.elapse(LocalDuration::from_mins(5));
+    alice.elapse(Duration::from_mins(5));
 
     alice
         .messages(&remote1)
@@ -912,7 +912,7 @@ fn test_inv_rebroadcast() {
         .expect("Alice sends a second `inv` message to the second peer");
 
     // Let some more time pass.
-    alice.elapse(LocalDuration::from_mins(5));
+    alice.elapse(Duration::from_mins(5));
     alice
         .messages(&remote1)
         .find(|m| {
@@ -943,7 +943,7 @@ fn test_inv_partial_broadcast() {
     alice.tock();
 
     // The first peer asks only for the first inventory item.
-    alice.elapse(LocalDuration::from_secs(3));
+    alice.elapse(Duration::from_secs(3));
     alice.received(
         &remote1,
         NetworkMessage::GetData(vec![Inventory::Transaction(tx1.txid())]),
@@ -975,7 +975,7 @@ fn test_inv_partial_broadcast() {
 
     // Time passes.
     alice.drain();
-    alice.elapse(LocalDuration::from_mins(5));
+    alice.elapse(Duration::from_mins(5));
 
     alice
         .messages(&remote1)
@@ -1008,7 +1008,7 @@ fn test_inv_partial_broadcast() {
 
     // More time passes.
     alice.drain();
-    alice.elapse(LocalDuration::from_mins(5));
+    alice.elapse(Duration::from_mins(5));
 
     assert_eq!(
         alice
@@ -1071,7 +1071,7 @@ fn test_confirmed_transaction() {
         .find(|e| matches!(e, Event::Inventory(invmgr::Event::BlockReceived { .. })))
         .expect("Alice receives the 2nd block");
 
-    alice.elapse(LocalDuration::from_mins(1));
+    alice.elapse(Duration::from_mins(1));
     alice.received(&remote, NetworkMessage::Block(blk1.clone()));
 
     let mut events = alice.events().filter_map(|e| {
@@ -1159,7 +1159,7 @@ fn test_submitted_transaction_filtering() {
     let tx = gen::transaction(&mut rng);
 
     // Set Alice's clock to the last block.
-    alice.tick(LocalTime::from_block_time(chain.last().header.time));
+    alice.tick(Instant::from_block_time(chain.last().header.time));
 
     // Connect to a peer and submit the transaction.
     alice.connect(
@@ -1307,7 +1307,7 @@ fn test_transaction_reverted_reconfirm() {
         let (cfhash, _) = gen::cfheader(parent, &cfilter);
 
         // Set Alice's clock to the last block time.
-        alice.tick(LocalTime::from_block_time(chain_tip.header.time));
+        alice.tick(Instant::from_block_time(chain_tip.header.time));
 
         // Alice receives a header announcement.
         alice.received(&remote, NetworkMessage::Headers(vec![matching.header]));
@@ -1477,7 +1477,7 @@ fn test_block_events() {
         })
     }
 
-    alice.tick(LocalTime::from_block_time(headers.last().time));
+    alice.tick(Instant::from_block_time(headers.last().time));
     alice.init();
     alice.command(Command::ImportHeaders(
         headers.tail.clone(),
@@ -1526,7 +1526,7 @@ fn test_block_events() {
     assert_eq!(0, events.count());
 
     // Receive fork.
-    alice.tick(LocalTime::from_block_time(extra.header.time));
+    alice.tick(Instant::from_block_time(extra.header.time));
     alice.command(Command::ImportHeaders(fork.tail.clone(), transmit));
     import.recv().unwrap().unwrap();
 

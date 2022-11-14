@@ -1,7 +1,7 @@
 use super::BlockCache;
 
 use nakamoto_common::bitcoin_hashes::Hash;
-use nakamoto_common::block::time::{AdjustedTime, Clock, LocalTime};
+use nakamoto_common::block::time::{AdjustedTime, Clock, Instant};
 use nakamoto_common::block::tree::{BlockReader, BlockTree, Error, ImportResult};
 use nakamoto_common::block::{BlockTime, Height, Target};
 use nakamoto_common::nonempty::NonEmpty;
@@ -30,7 +30,7 @@ use nakamoto_common::bitcoin_hashes::hex::FromHex;
 use nakamoto_common::bitcoin::util::uint::Uint256;
 
 /// Sun, 12 Jul 2020 15:03:05 +0000.
-const LOCAL_TIME: LocalTime = LocalTime::from_secs(1594566185);
+const LOCAL_TIME: Instant = Instant::from_secs(1594566185);
 
 /// Lowest possible difficulty.
 const TARGET: Uint256 = Uint256([

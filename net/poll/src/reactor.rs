@@ -3,7 +3,7 @@ use crossbeam_channel as chan;
 
 use nakamoto_net::error::Error;
 use nakamoto_net::event::Publisher;
-use nakamoto_net::time::{LocalDuration, LocalTime};
+use nakamoto_net::time::{Duration, Instant};
 use nakamoto_net::{DisconnectReason, Io, PeerId};
 use nakamoto_net::{Link, Service};
 
@@ -29,7 +29,7 @@ const READ_TIMEOUT: time::Duration = time::Duration::from_secs(6);
 /// Maximum time to wait when writing to a socket.
 const WRITE_TIMEOUT: time::Duration = time::Duration::from_secs(3);
 /// Maximum amount of time to wait for i/o.
-const WAIT_TIMEOUT: LocalDuration = LocalDuration::from_mins(60);
+const WAIT_TIMEOUT: Duration = Duration::from_mins(60);
 /// Socket read buffer size.
 const READ_BUFFER_SIZE: usize = 1024 * 192;
 
@@ -108,7 +108,7 @@ impl<Id: PeerId> nakamoto_net::Reactor<Id> for Reactor<net::TcpStream, Id> {
 
         let mut sources = popol::Sources::new();
         let waker = Waker::new(&mut sources)?;
-        let timeouts = TimeoutManager::new(LocalDuration::from_secs(1));
+        let timeouts = TimeoutManager::new(Duration::from_secs(1));
         let connecting = HashSet::new();
 
         Ok(Self {
@@ -281,7 +281,7 @@ impl<Id: PeerId> nakamoto_net::Reactor<Id> for Reactor<net::TcpStream, Id> {
 
 impl<Id: PeerId> Reactor<net::TcpStream, Id> {
     /// Process service state machine outputs.
-    fn process<S, E>(&mut self, service: &mut S, publisher: &mut E, local_time: LocalTime)
+    fn process<S, E>(&mut self, service: &mut S, publisher: &mut E, local_time: Instant)
     where
         S: Service<Id>,
         E: Publisher<S::Event>,

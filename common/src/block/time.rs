@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use super::{BlockTime, Height};
 
-pub use nakamoto_net::time::{LocalDuration, LocalTime};
+pub use nakamoto_net::time::{Duration, Instant};
 
 /// Maximum time adjustment between network and local time (70 minutes).
 pub const MAX_TIME_ADJUSTMENT: TimeOffset = 70 * 60;
@@ -34,7 +34,7 @@ pub trait Clock: Clone {
     /// This is the same representation as used in block header timestamps.
     fn block_time(&self) -> BlockTime;
     /// Tell the time in local time.
-    fn local_time(&self) -> LocalTime;
+    fn local_time(&self) -> Instant;
     /// Create a clock from a block time.
     fn from_block_time(t: BlockTime) -> Self;
 }
@@ -44,7 +44,7 @@ pub trait AdjustedClock<K>: Clock {
     /// Record a peer offset.
     fn record_offset(&mut self, source: K, sample: TimeOffset);
     /// Set the local time.
-    fn set(&mut self, local_time: LocalTime);
+    fn set(&mut self, local_time: Instant);
 }
 
 impl<K: Eq + Clone + Hash> AdjustedClock<K> for AdjustedTime<K> {
@@ -52,7 +52,7 @@ impl<K: Eq + Clone + Hash> AdjustedClock<K> for AdjustedTime<K> {
         AdjustedTime::record_offset(self, source, sample)
     }
 
-    fn set(&mut self, local_time: LocalTime) {
+    fn set(&mut self, local_time: Instant) {
         AdjustedTime::set_local_time(self, local_time)
     }
 }
@@ -71,9 +71,9 @@ impl<T: Clock> std::ops::Deref for RefClock<T> {
     }
 }
 
-impl RefClock<LocalTime> {
+impl RefClock<Instant> {
     /// Elapse time.
-    pub fn elapse(&self, duration: LocalDuration) {
+    pub fn elapse(&self, duration: Duration) {
         self.inner.borrow_mut().elapse(duration)
     }
 }
@@ -83,7 +83,7 @@ impl<K: Eq + Clone + Hash> AdjustedClock<K> for RefClock<AdjustedTime<K>> {
         self.inner.borrow_mut().record_offset(source, sample);
     }
 
-    fn set(&mut self, local_time: LocalTime) {
+    fn set(&mut self, local_time: Instant) {
         self.inner.borrow_mut().set_local_time(local_time);
     }
 }
@@ -101,7 +101,7 @@ impl<T: Clock> Clock for RefClock<T> {
         self.inner.borrow().block_time()
     }
 
-    fn local_time(&self) -> LocalTime {
+    fn local_time(&self) -> Instant {
         self.inner.borrow().local_time()
     }
 
@@ -110,17 +110,17 @@ impl<T: Clock> Clock for RefClock<T> {
     }
 }
 
-impl Clock for LocalTime {
+impl Clock for Instant {
     fn block_time(&self) -> BlockTime {
         self.as_secs() as u32
     }
 
-    fn local_time(&self) -> LocalTime {
+    fn local_time(&self) -> Instant {
         *self
     }
 
     fn from_block_time(t: BlockTime) -> Self {
-        LocalTime::from_secs(t as u64)
+        Instant::from_secs(t as u64)
     }
 }
 
@@ -140,7 +140,7 @@ pub struct AdjustedTime<K> {
     /// Current time offset, based on our samples.
     offset: TimeOffset,
     /// Last known local time.
-    local_time: LocalTime,
+    local_time: Instant,
 }
 
 impl<K: Eq + Clone + Hash> Clock for AdjustedTime<K> {
@@ -148,25 +148,25 @@ impl<K: Eq + Clone + Hash> Clock for AdjustedTime<K> {
         self.get()
     }
 
-    fn local_time(&self) -> LocalTime {
+    fn local_time(&self) -> Instant {
         self.local_time()
     }
 
     fn from_block_time(t: BlockTime) -> Self {
-        AdjustedTime::new(LocalTime::from_block_time(t))
+        AdjustedTime::new(Instant::from_block_time(t))
     }
 }
 
 impl<K: Hash + Eq> Default for AdjustedTime<K> {
     fn default() -> Self {
-        Self::new(LocalTime::default())
+        Self::new(Instant::default())
     }
 }
 
 impl<K: Hash + Eq> AdjustedTime<K> {
     /// Create a new network-adjusted time tracker.
     /// Starts with a single sample of zero.
-    pub fn new(local_time: LocalTime) -> Self {
+    pub fn new(local_time: Instant) -> Self {
         let offset = 0;
 
         let mut samples = Vec::with_capacity(MAX_TIME_SAMPLES);
@@ -257,12 +257,12 @@ impl<K: Hash + Eq> AdjustedTime<K> {
     }
 
     /// Set the local time to the given value.
-    pub fn set_local_time(&mut self, time: LocalTime) {
+    pub fn set_local_time(&mut self, time: Instant) {
         self.local_time = time;
     }
 
     /// Get the last known local time.
-    pub fn local_time(&self) -> LocalTime {
+    pub fn local_time(&self) -> Instant {
         self.local_time
     }
 }
@@ -275,14 +275,14 @@ mod tests {
 
     #[test]
     fn test_local_duration_display() {
-        assert_eq!(LocalDuration::from_mins(90).to_string(), "1.50 hour(s)");
-        assert_eq!(LocalDuration::from_mins(60).to_string(), "1 hour(s)");
+        assert_eq!(Duration::from_mins(90).to_string(), "1.50 hour(s)");
+        assert_eq!(Duration::from_mins(60).to_string(), "1 hour(s)");
         assert_eq!(
-            LocalDuration::from_millis(1280).to_string(),
+            Duration::from_millis(1280).to_string(),
             "1.280 second(s)"
         );
         assert_eq!(
-            LocalDuration::from_millis(980).to_string(),
+            Duration::from_millis(980).to_string(),
             "980 millisecond(s)"
         );
     }

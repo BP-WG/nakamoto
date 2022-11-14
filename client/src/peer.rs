@@ -124,7 +124,7 @@ mod test {
     use super::*;
     use nakamoto_common::bitcoin::network::address::Address;
     use nakamoto_common::bitcoin::network::constants::ServiceFlags;
-    use nakamoto_common::block::time::LocalTime;
+    use nakamoto_common::block::time::Instant;
 
     #[test]
     fn test_empty() {
@@ -153,8 +153,8 @@ mod test {
                 let ka = KnownAddress {
                     addr: Address::new(&sockaddr, services),
                     source: Source::Dns,
-                    last_success: Some(LocalTime::from_secs(i as u64)),
-                    last_sampled: Some(LocalTime::from_secs((i + 1) as u64)),
+                    last_success: Some(Instant::from_secs(i as u64)),
+                    last_sampled: Some(Instant::from_secs((i + 1) as u64)),
                     last_attempt: None,
                     last_active: None,
                 };

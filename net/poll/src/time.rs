@@ -1,17 +1,17 @@
 //! Time-related functionality useful for reactors.
-pub use nakamoto_net::time::{LocalDuration, LocalTime};
+pub use nakamoto_net::time::{Duration, Instant};
 
 /// Manages timers and triggers timeouts.
 pub struct TimeoutManager<K> {
-    timeouts: Vec<(K, LocalTime)>,
-    threshold: LocalDuration,
+    timeouts: Vec<(K, Instant)>,
+    threshold: Duration,
 }
 
 impl<K> TimeoutManager<K> {
     /// Create a new timeout manager.
     ///
     /// Takes a threshold below which two timeouts cannot overlap.
-    pub fn new(threshold: LocalDuration) -> Self {
+    pub fn new(threshold: Duration) -> Self {
         Self {
             timeouts: vec![],
             threshold,
@@ -31,26 +31,26 @@ impl<K> TimeoutManager<K> {
     /// Register a new timeout with an associated key and wake-up time.
     ///
     /// ```
-    /// use nakamoto_net_poll::time::{LocalTime, LocalDuration, TimeoutManager};
+    /// use nakamoto_net_poll::time::{Instant, Duration, TimeoutManager};
     ///
-    /// let mut tm = TimeoutManager::new(LocalDuration::from_secs(1));
-    /// let now = LocalTime::now();
+    /// let mut tm = TimeoutManager::new(Duration::from_secs(1));
+    /// let now = Instant::now();
     ///
-    /// let registered = tm.register(0xA, now + LocalDuration::from_secs(8));
+    /// let registered = tm.register(0xA, now + Duration::from_secs(8));
     /// assert!(registered);
     ///
-    /// let registered = tm.register(0xB, now + LocalDuration::from_secs(9));
+    /// let registered = tm.register(0xB, now + Duration::from_secs(9));
     /// assert!(registered);
     /// assert_eq!(tm.len(), 2);
     ///
-    /// let registered = tm.register(0xC, now + LocalDuration::from_millis(9541));
+    /// let registered = tm.register(0xC, now + Duration::from_millis(9541));
     /// assert!(!registered);
     ///
-    /// let registered = tm.register(0xC, now + LocalDuration::from_millis(9999));
+    /// let registered = tm.register(0xC, now + Duration::from_millis(9999));
     /// assert!(!registered);
     /// assert_eq!(tm.len(), 2);
     /// ```
-    pub fn register(&mut self, key: K, time: LocalTime) -> bool {
+    pub fn register(&mut self, key: K, time: Instant) -> bool {
         // If this timeout is too close to a pre-existing timeout,
         // don't register it.
         if self
@@ -71,32 +71,32 @@ impl<K> TimeoutManager<K> {
     /// to be reached.  Returns `None` if there are no timeouts.
     ///
     /// ```
-    /// use nakamoto_net_poll::time::{LocalTime, LocalDuration, TimeoutManager};
+    /// use nakamoto_net_poll::time::{Instant, Duration, TimeoutManager};
     ///
-    /// let mut tm = TimeoutManager::new(LocalDuration::from_secs(0));
-    /// let mut now = LocalTime::now();
+    /// let mut tm = TimeoutManager::new(Duration::from_secs(0));
+    /// let mut now = Instant::now();
     ///
-    /// tm.register(0xA, now + LocalDuration::from_millis(16));
-    /// tm.register(0xB, now + LocalDuration::from_millis(8));
-    /// tm.register(0xC, now + LocalDuration::from_millis(64));
+    /// tm.register(0xA, now + Duration::from_millis(16));
+    /// tm.register(0xB, now + Duration::from_millis(8));
+    /// tm.register(0xC, now + Duration::from_millis(64));
     ///
     /// // We need to wait 8 millis to trigger the next timeout (1).
-    /// assert!(tm.next(now) <= Some(LocalDuration::from_millis(8)));
+    /// assert!(tm.next(now) <= Some(Duration::from_millis(8)));
     ///
     /// // ... sleep for a millisecond ...
-    /// now.elapse(LocalDuration::from_millis(1));
+    /// now.elapse(Duration::from_millis(1));
     ///
     /// // Now we don't need to wait as long!
-    /// assert!(tm.next(now).unwrap() <= LocalDuration::from_millis(7));
+    /// assert!(tm.next(now).unwrap() <= Duration::from_millis(7));
     /// ```
-    pub fn next(&self, now: impl Into<LocalTime>) -> Option<LocalDuration> {
+    pub fn next(&self, now: impl Into<Instant>) -> Option<Duration> {
         let now = now.into();
 
         self.timeouts.last().map(|(_, t)| {
             if *t >= now {
                 *t - now
             } else {
-                LocalDuration::from_secs(0)
+                Duration::from_secs(0)
             }
         })
     }
@@ -105,23 +105,23 @@ impl<K> TimeoutManager<K> {
     /// have timed out. Returns the number of keys that timed out.
     ///
     /// ```
-    /// use nakamoto_net_poll::time::{LocalTime, LocalDuration, TimeoutManager};
+    /// use nakamoto_net_poll::time::{Instant, Duration, TimeoutManager};
     ///
-    /// let mut tm = TimeoutManager::new(LocalDuration::from_secs(0));
-    /// let now = LocalTime::now();
+    /// let mut tm = TimeoutManager::new(Duration::from_secs(0));
+    /// let now = Instant::now();
     ///
-    /// tm.register(0xA, now + LocalDuration::from_millis(8));
-    /// tm.register(0xB, now + LocalDuration::from_millis(16));
-    /// tm.register(0xC, now + LocalDuration::from_millis(64));
-    /// tm.register(0xD, now + LocalDuration::from_millis(72));
+    /// tm.register(0xA, now + Duration::from_millis(8));
+    /// tm.register(0xB, now + Duration::from_millis(16));
+    /// tm.register(0xC, now + Duration::from_millis(64));
+    /// tm.register(0xD, now + Duration::from_millis(72));
     ///
     /// let mut timeouts = Vec::new();
     ///
-    /// assert_eq!(tm.wake(now + LocalDuration::from_millis(21), &mut timeouts), 2);
+    /// assert_eq!(tm.wake(now + Duration::from_millis(21), &mut timeouts), 2);
     /// assert_eq!(timeouts, vec![0xA, 0xB]);
     /// assert_eq!(tm.len(), 2);
     /// ```
-    pub fn wake(&mut self, now: LocalTime, woken: &mut Vec<K>) -> usize {
+    pub fn wake(&mut self, now: Instant, woken: &mut Vec<K>) -> usize {
         let before = woken.len();
 
         while let Some((k, t)) = self.timeouts.pop() {
@@ -143,12 +143,12 @@ mod tests {
 
     #[quickcheck]
     fn properties(timeouts: Vec<u64>, threshold: u64) -> bool {
-        let threshold = LocalDuration::from_secs(threshold);
+        let threshold = Duration::from_secs(threshold);
         let mut tm = TimeoutManager::new(threshold);
-        let mut now = LocalTime::now();
+        let mut now = Instant::now();
 
         for t in timeouts {
-            tm.register(t, now + LocalDuration::from_secs(t));
+            tm.register(t, now + Duration::from_secs(t));
         }
 
         let mut woken = Vec::new();
@@ -165,13 +165,13 @@ mod tests {
 
     #[test]
     fn test_wake() {
-        let mut tm = TimeoutManager::new(LocalDuration::from_secs(0));
-        let now = LocalTime::now();
+        let mut tm = TimeoutManager::new(Duration::from_secs(0));
+        let now = Instant::now();
 
-        tm.register(0xA, now + LocalDuration::from_millis(8));
-        tm.register(0xB, now + LocalDuration::from_millis(16));
-        tm.register(0xC, now + LocalDuration::from_millis(64));
-        tm.register(0xD, now + LocalDuration::from_millis(72));
+        tm.register(0xA, now + Duration::from_millis(8));
+        tm.register(0xB, now + Duration::from_millis(16));
+        tm.register(0xC, now + Duration::from_millis(64));
+        tm.register(0xD, now + Duration::from_millis(72));
 
         let mut timeouts = Vec::new();
 
@@ -179,7 +179,7 @@ mod tests {
         assert_eq!(timeouts, vec![]);
         assert_eq!(tm.len(), 4);
         assert_eq!(
-            tm.wake(now + LocalDuration::from_millis(9), &mut timeouts),
+            tm.wake(now + Duration::from_millis(9), &mut timeouts),
             1
         );
         assert_eq!(timeouts, vec![0xA]);
@@ -188,7 +188,7 @@ mod tests {
         timeouts.clear();
 
         assert_eq!(
-            tm.wake(now + LocalDuration::from_millis(66), &mut timeouts),
+            tm.wake(now + Duration::from_millis(66), &mut timeouts),
             2
         );
         assert_eq!(timeouts, vec![0xB, 0xC]);
@@ -197,7 +197,7 @@ mod tests {
         timeouts.clear();
 
         assert_eq!(
-            tm.wake(now + LocalDuration::from_millis(96), &mut timeouts),
+            tm.wake(now + Duration::from_millis(96), &mut timeouts),
             1
         );
         assert_eq!(timeouts, vec![0xD]);

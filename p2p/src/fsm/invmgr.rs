@@ -27,7 +27,7 @@ use nakamoto_common::bitcoin::{Block, BlockHash, Transaction, Txid, Wtxid};
 // TODO: Timeout should be configurable
 // TODO: Add exponential back-off
 
-use nakamoto_common::block::time::{Clock, LocalDuration, LocalTime};
+use nakamoto_common::block::time::{Clock, Duration, Instant};
 use nakamoto_common::block::tree::BlockReader;
 use nakamoto_common::collections::{AddressBook, HashMap};
 
@@ -36,16 +36,16 @@ use super::output::{Wakeup, Wire};
 use super::{Height, PeerId, Socket};
 
 /// Time between re-broadcasts of inventories.
-pub const REBROADCAST_TIMEOUT: LocalDuration = LocalDuration::from_mins(1);
+pub const REBROADCAST_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// Time between request retries.
-pub const REQUEST_TIMEOUT: LocalDuration = LocalDuration::from_secs(15);
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Maximum number of attempts to send inventories to a peer.
 pub const MAX_ATTEMPTS: usize = 3;
 
 /// Time between idles.
-pub const IDLE_TIMEOUT: LocalDuration = LocalDuration::from_secs(30);
+pub const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Block depth at which confirmed transactions are pruned and no longer reverted after a re-org.
 pub const TRANSACTION_PRUNE_DEPTH: Height = 12;
@@ -147,7 +147,7 @@ pub struct Peer {
     /// Number of times we attempted to send inventories to this peer.
     attempts: usize,
     /// Last time we attempted to send inventories to this peer.
-    last_attempt: Option<LocalTime>,
+    last_attempt: Option<Instant>,
 
     /// Number of times a certain block was requested.
     #[allow(dead_code)]
@@ -158,7 +158,7 @@ pub struct Peer {
 }
 
 impl Peer {
-    fn attempted(&mut self, time: LocalTime) {
+    fn attempted(&mut self, time: Instant) {
         self.last_attempt = Some(time);
         self.attempts += 1;
     }
@@ -180,7 +180,7 @@ pub struct InventoryManager<U, C> {
     /// Peer map.
     peers: AddressBook<PeerId, Peer>,
     /// Timeout used for retrying broadcasts.
-    timeout: LocalDuration,
+    timeout: Duration,
     /// Confirmed transactions by block height.
     /// Pruned after a certain depth.
     confirmed: HashMap<Height, Vec<Transaction>>,
@@ -191,11 +191,11 @@ pub struct InventoryManager<U, C> {
     /// Transaction mempool. Stores unconfirmed transactions sent to the network.
     pub mempool: BTreeMap<Wtxid, Transaction>,
     /// Blocks requested and the time at which they were last requested.
-    pub remaining: HashMap<BlockHash, Option<LocalTime>>,
+    pub remaining: HashMap<BlockHash, Option<Instant>>,
     /// Blocks received, waiting to be processed.
     pub received: HashMap<Height, Block>,
 
-    last_tick: Option<LocalTime>,
+    last_tick: Option<Instant>,
     rng: fastrand::Rng,
     upstream: U,
     clock: C,
@@ -551,7 +551,7 @@ impl<U: Wire<Event> + Wakeup, C: Clock> InventoryManager<U, C> {
 
     fn schedule_tick(&mut self) {
         self.last_tick = None; // Disable rate-limiting for the next tick.
-        self.upstream.wakeup(LocalDuration::from_secs(1));
+        self.upstream.wakeup(Duration::from_secs(1));
     }
 }
 
@@ -590,7 +590,7 @@ mod tests {
 
         let mut upstream = Outbox::new(network, PROTOCOL_VERSION);
         let mut rng = fastrand::Rng::new();
-        let clock = RefClock::from(LocalTime::now());
+        let clock = RefClock::from(Instant::now());
 
         let genesis = network.genesis_block();
         let chain = gen::blockchain(genesis, 16, &mut rng);
@@ -631,10 +631,10 @@ mod tests {
         invmgr.get_block(hash);
 
         let mut requested = HashSet::with_hasher(rng.clone().into());
-        let mut last_request = LocalTime::default();
+        let mut last_request = Instant::default();
 
         loop {
-            clock.elapse(LocalDuration::from_secs(rng.u64(10..30)));
+            clock.elapse(Duration::from_secs(rng.u64(10..30)));
             invmgr.received_wake(&tree);
             assert!(!invmgr.remaining.is_empty());
 
@@ -682,7 +682,7 @@ mod tests {
         let remote: net::SocketAddr = ([88, 88, 88, 88], 8333).into();
         let mut rng = fastrand::Rng::with_seed(1);
 
-        let clock = RefClock::from(LocalTime::now());
+        let clock = RefClock::from(Instant::now());
         let tx = gen::transaction(&mut rng);
 
         let mut invmgr = InventoryManager::new(rng, upstream.clone(), clock.clone());
@@ -721,7 +721,7 @@ mod tests {
         let tree = model::Cache::from(NonEmpty::new(network.genesis()));
 
         let mut rng = fastrand::Rng::with_seed(1);
-        let clock = RefClock::from(LocalTime::now());
+        let clock = RefClock::from(Instant::now());
 
         let remote: net::SocketAddr = ([88, 88, 88, 88], 8333).into();
         let tx = gen::transaction(&mut rng);
@@ -771,7 +771,7 @@ mod tests {
         let fork_block2 = gen::block(&fork_block1.header, &mut rng);
 
         let mut upstream = Outbox::new(network, PROTOCOL_VERSION);
-        let time = LocalTime::now();
+        let time = Instant::now();
 
         let mut tree = model::Cache::from(headers);
         let mut invmgr = InventoryManager::new(rng, upstream.clone(), time);
@@ -832,7 +832,7 @@ mod tests {
         let tree = model::Cache::from(NonEmpty::new(network.genesis()));
 
         let mut rng = fastrand::Rng::with_seed(1);
-        let time = LocalTime::now();
+        let time = Instant::now();
 
         let remote: net::SocketAddr = ([88, 88, 88, 88], 8333).into();
         let remote2: net::SocketAddr = ([88, 88, 88, 89], 8333).into();
@@ -878,7 +878,7 @@ mod tests {
         let remote: net::SocketAddr = ([88, 88, 88, 88], 8333).into();
         let tx = gen::transaction(&mut rng);
 
-        let mut invmgr = InventoryManager::new(rng, upstream.clone(), LocalTime::now());
+        let mut invmgr = InventoryManager::new(rng, upstream.clone(), Instant::now());
 
         invmgr.peer_negotiated(remote.into(), ServiceFlags::NETWORK, true, true);
         invmgr.announce(tx.clone());

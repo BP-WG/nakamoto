@@ -7,7 +7,7 @@ use nakamoto_common::bitcoin::network::message_blockdata::Inventory;
 
 use nakamoto_common::bitcoin_hashes::Hash;
 use nakamoto_common::block::store;
-use nakamoto_common::block::time::{Clock, LocalDuration, LocalTime};
+use nakamoto_common::block::time::{Clock, Duration, Instant};
 use nakamoto_common::block::tree::{BlockReader, BlockTree, Error, ImportResult};
 use nakamoto_common::block::{BlockHash, BlockHeader, Height};
 use nakamoto_common::collections::{AddressBook, HashMap};
@@ -17,23 +17,23 @@ use super::output::{Disconnect, Wakeup, Wire};
 use super::{DisconnectReason, Link, Locators, PeerId, Socket};
 
 /// How long to wait for a request, eg. `getheaders` to be fulfilled.
-pub const REQUEST_TIMEOUT: LocalDuration = LocalDuration::from_secs(30);
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// How long before the tip of the chain is considered stale. This takes into account
 /// that the block timestamp may have been set sometime in the future.
-pub const TIP_STALE_DURATION: LocalDuration = LocalDuration::from_mins(60 * 2);
+pub const TIP_STALE_DURATION: Duration = Duration::from_mins(60 * 2);
 /// Maximum number of headers sent in a `headers` message.
 pub const MAX_MESSAGE_HEADERS: usize = 2000;
 /// Maximum number of inventories sent in an `inv` message.
 pub const MAX_MESSAGE_INVS: usize = 50000;
 /// Idle timeout.
-pub const IDLE_TIMEOUT: LocalDuration = LocalDuration::BLOCK_INTERVAL;
+pub const IDLE_TIMEOUT: Duration = Duration::BLOCK_INTERVAL;
 /// Services required from peers for header sync.
 pub const REQUIRED_SERVICES: ServiceFlags = ServiceFlags::NETWORK;
 
 /// Maximum headers announced in a `headers` message, when unsolicited.
 const MAX_UNSOLICITED_HEADERS: usize = 24;
 /// How long to wait between checks for longer chains from peers.
-const PEER_SAMPLE_INTERVAL: LocalDuration = LocalDuration::from_mins(60);
+const PEER_SAMPLE_INTERVAL: Duration = Duration::from_mins(60);
 
 /// What to do if a timeout for a peer is received.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -53,7 +53,7 @@ struct Peer {
     preferred: bool,
     tip: BlockHash,
     link: Link,
-    last_active: Option<LocalTime>,
+    last_active: Option<Instant>,
     last_asked: Option<Locators>,
 
     _socket: Socket,
@@ -65,7 +65,7 @@ pub struct Config {
     /// Maximum number of messages in a `headers` message.
     pub max_message_headers: usize,
     /// How long to wait for a response from a peer.
-    pub request_timeout: LocalDuration,
+    pub request_timeout: Duration,
     /// Consensus parameters.
     pub params: Params,
 }
@@ -79,11 +79,11 @@ pub struct SyncManager<U, C> {
     /// Sync-specific peer state.
     peers: AddressBook<PeerId, Peer>,
     /// Last time our tip was updated.
-    last_tip_update: Option<LocalTime>,
+    last_tip_update: Option<Instant>,
     /// Last time we sampled our peers for their active chain.
-    last_peer_sample: Option<LocalTime>,
+    last_peer_sample: Option<Instant>,
     /// Last time we idled.
-    last_idle: Option<LocalTime>,
+    last_idle: Option<Instant>,
     /// In-flight requests to peers.
     inflight: HashMap<PeerId, GetHeaders>,
     /// Upstream protocol channel.
@@ -121,7 +121,7 @@ pub enum Event {
     /// Synced up to the specified hash and height.
     Synced(BlockHash, Height),
     /// Potential stale tip detected on the active chain.
-    StaleTip(LocalTime),
+    StaleTip(Instant),
     /// Peer misbehaved.
     PeerMisbehaved(PeerId),
     /// Peer height updated.
@@ -184,7 +184,7 @@ struct GetHeaders {
     /// Locators hashes.
     locators: Locators,
     /// Time at which the request was sent.
-    sent_at: LocalTime,
+    sent_at: Instant,
     /// What to do if this request times out.
     on_timeout: OnTimeout,
 }
@@ -414,7 +414,7 @@ impl<U: Wakeup + Disconnect + Wire<Event>, C: Clock> SyncManager<U, C> {
         &mut self,
         addr: PeerId,
         locators: Locators,
-        timeout: LocalDuration,
+        timeout: Duration,
         on_timeout: OnTimeout,
     ) {
         // Don't request more than once from the same peer.
@@ -583,12 +583,12 @@ impl<U: Wakeup + Disconnect + Wire<Event>, C: Clock> SyncManager<U, C> {
     /// Check whether our current tip is stale.
     ///
     /// *Nb. This doesn't check whether we've already requested new blocks.*
-    fn stale_tip<T: BlockReader>(&self, tree: &T) -> Option<LocalTime> {
+    fn stale_tip<T: BlockReader>(&self, tree: &T) -> Option<Instant> {
         let now = self.clock.local_time();
 
         if let Some(last_update) = self.last_tip_update {
             if last_update
-                < now - LocalDuration::from_secs(self.config.params.pow_target_spacing * 3)
+                < now - Duration::from_secs(self.config.params.pow_target_spacing * 3)
             {
                 return Some(last_update);
             }
@@ -597,7 +597,7 @@ impl<U: Wakeup + Disconnect + Wire<Event>, C: Clock> SyncManager<U, C> {
         // are fresh, or restarted our node. In that case we check the last block time
         // instead.
         let (_, tip) = tree.tip();
-        let time = LocalTime::from_block_time(tip.time);
+        let time = Instant::from_block_time(tip.time);
 
         if time <= now - TIP_STALE_DURATION {
             return Some(time);

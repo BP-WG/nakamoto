@@ -8,7 +8,7 @@ use nakamoto_common::bitcoin::network::address::Address;
 use nakamoto_common::bitcoin::network::constants::ServiceFlags;
 
 use nakamoto_common::block::time::Clock;
-use nakamoto_common::block::time::{LocalDuration, LocalTime};
+use nakamoto_common::block::time::{Duration, Instant};
 use nakamoto_common::block::BlockTime;
 use nakamoto_common::collections::{HashMap, HashSet};
 use nakamoto_common::p2p::peer::{AddressSource, KnownAddress, Source, Store};
@@ -19,13 +19,13 @@ use super::output::{Wakeup, Wire};
 use super::Link;
 
 /// Time to wait until a request times out.
-pub const REQUEST_TIMEOUT: LocalDuration = LocalDuration::from_mins(1);
+pub const REQUEST_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// Idle timeout. Used to run periodic functions.
-pub const IDLE_TIMEOUT: LocalDuration = LocalDuration::from_mins(1);
+pub const IDLE_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// Sample timeout. How long before a sampled address can be returned again.
-pub const SAMPLE_TIMEOUT: LocalDuration = LocalDuration::from_mins(3);
+pub const SAMPLE_TIMEOUT: Duration = Duration::from_mins(3);
 
 /// Maximum number of addresses expected in a `addr` message.
 const MAX_ADDR_ADDRESSES: usize = 1000;
@@ -137,9 +137,9 @@ pub struct AddressManager<P, U, C> {
     sources: HashSet<net::SocketAddr>,
     local_addrs: HashSet<net::SocketAddr>,
     /// The last time we asked our peers for new addresses.
-    last_request: Option<LocalTime>,
+    last_request: Option<Instant>,
     /// The last time we idled.
-    last_idle: Option<LocalTime>,
+    last_idle: Option<Instant>,
     cfg: Config,
     upstream: U,
     rng: fastrand::Rng,
@@ -375,7 +375,7 @@ impl<P: Store, U: Wire<Event>, C: Clock> AddressManager<P, U, C> {
                 continue;
             }
             // Ignore addresses that are too far into the future.
-            if LocalTime::from_block_time(last_active) > time + LocalDuration::from_mins(60) {
+            if Instant::from_block_time(last_active) > time + Duration::from_mins(60) {
                 continue;
             }
             // Ignore addresses from unsupported domains.
@@ -408,7 +408,7 @@ impl<P: Store, U: Wire<Event>, C: Clock> AddressManager<P, U, C> {
                 // TODO: Cannot be 'None' due to above condition.
                 None
             } else {
-                Some(LocalTime::from_block_time(last_active))
+                Some(Instant::from_block_time(last_active))
             };
 
             // Record the address, and ignore addresses we already know.
@@ -677,7 +677,7 @@ mod tests {
             fastrand::Rng::new(),
             HashMap::new(),
             (),
-            LocalTime::now(),
+            Instant::now(),
         );
 
         assert!(addrmgr.sample(ServiceFlags::NONE).is_none());
@@ -685,7 +685,7 @@ mod tests {
 
     #[test]
     fn test_known_addresses() {
-        let time = LocalTime::now();
+        let time = Instant::now();
         let mut addrmgr = AddressManager::new(
             Config::default(),
             fastrand::Rng::new(),
@@ -720,7 +720,7 @@ mod tests {
         assert!(ka.last_sampled.is_none());
         assert_eq!(
             ka.last_active,
-            Some(LocalTime::from_block_time(time.block_time()))
+            Some(Instant::from_block_time(time.block_time()))
         );
 
         addrmgr.peer_attempted(addr);
@@ -764,7 +764,7 @@ mod tests {
 
     #[test]
     fn test_is_exhausted() {
-        let time = LocalTime::now();
+        let time = Instant::now();
         let mut addrmgr = AddressManager::new(
             Config::default(),
             fastrand::Rng::new(),
@@ -839,7 +839,7 @@ mod tests {
     fn test_disconnect_rediscover() {
         // Check that if we re-discover an address after permanent disconnection, we still know
         // not to connect to it.
-        let time = LocalTime::now();
+        let time = Instant::now();
         let mut addrmgr = AddressManager::new(
             Config::default(),
             fastrand::Rng::new(),
@@ -878,7 +878,7 @@ mod tests {
 
     #[quickcheck]
     fn prop_sample_no_duplicates(size: usize, seed: u64) -> TestResult {
-        let clock = LocalTime::now();
+        let clock = Instant::now();
 
         if size > 24 {
             return TestResult::discard();
@@ -895,7 +895,7 @@ mod tests {
                 clock,
             )
         };
-        let time = LocalTime::now();
+        let time = Instant::now();
         let services = ServiceFlags::NETWORK;
         let mut addrs = vec![];
 
@@ -932,7 +932,7 @@ mod tests {
     #[test]
     fn test_max_range_size() {
         let services = ServiceFlags::NONE;
-        let time = LocalTime::now();
+        let time = Instant::now();
 
         let mut addrmgr = AddressManager::new(
             Config::default(),
@@ -997,11 +997,11 @@ mod tests {
 
         use nakamoto_common::bitcoin::network::address::Address;
         use nakamoto_common::bitcoin::network::constants::ServiceFlags;
-        use nakamoto_common::block::time::LocalTime;
+        use nakamoto_common::block::time::Instant;
         use nakamoto_common::p2p::peer::Source;
 
         let cfg = Config::default();
-        let time = LocalTime::now();
+        let time = Instant::now();
         let mut addrmgr = AddressManager::new(cfg, fastrand::Rng::new(), HashMap::new(), (), time);
 
         addrmgr.initialize();
@@ -1051,11 +1051,11 @@ mod tests {
 
         use nakamoto_common::bitcoin::network::address::Address;
         use nakamoto_common::bitcoin::network::constants::ServiceFlags;
-        use nakamoto_common::block::time::{LocalDuration, LocalTime};
+        use nakamoto_common::block::time::{Duration, Instant};
         use nakamoto_common::p2p::peer::Source;
 
         let cfg = Config::default();
-        let clock = RefClock::from(LocalTime::now());
+        let clock = RefClock::from(Instant::now());
         let mut addrmgr =
             AddressManager::new(cfg, fastrand::Rng::new(), HashMap::new(), (), clock.clone());
 
@@ -1098,7 +1098,7 @@ mod tests {
             let (addr, _) = addrmgr.sample(ServiceFlags::NONE).unwrap();
 
             // Make sure we can re-sample the same addresses for the purpose of this example.
-            clock.elapse(LocalDuration::from_mins(60));
+            clock.elapse(Duration::from_mins(60));
             addrmgr.received_wake();
 
             if adversary_addrs.contains(&addr) {

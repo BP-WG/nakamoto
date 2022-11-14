@@ -7,7 +7,7 @@
 use std::collections::VecDeque;
 use std::net;
 
-use nakamoto_common::block::time::{Clock, LocalDuration, LocalTime};
+use nakamoto_common::block::time::{Clock, Duration, Instant};
 use nakamoto_common::collections::HashMap;
 
 use crate::fsm::PeerId;
@@ -18,9 +18,9 @@ use super::{
 };
 
 /// Time interval to wait between sent pings.
-pub const PING_INTERVAL: LocalDuration = LocalDuration::from_mins(2);
+pub const PING_INTERVAL: Duration = Duration::from_mins(2);
 /// Time to wait to receive a pong when sending a ping.
-pub const PING_TIMEOUT: LocalDuration = LocalDuration::from_secs(30);
+pub const PING_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Maximum number of latencies recorded per peer.
 const MAX_RECORDED_LATENCIES: usize = 64;
@@ -37,8 +37,8 @@ impl std::fmt::Display for Event {
 
 #[derive(Debug)]
 enum State {
-    AwaitingPong { nonce: u64, since: LocalTime },
-    Idle { since: LocalTime },
+    AwaitingPong { nonce: u64, since: Instant },
+    Idle { since: Instant },
 }
 
 #[derive(Debug)]
@@ -46,19 +46,19 @@ struct Peer {
     address: net::SocketAddr,
     state: State,
     /// Observed round-trip latencies for this peer.
-    latencies: VecDeque<LocalDuration>,
+    latencies: VecDeque<Duration>,
 }
 
 impl Peer {
     /// Calculate the average latency of this peer.
     #[allow(dead_code)]
-    fn latency(&self) -> LocalDuration {
-        let sum: LocalDuration = self.latencies.iter().sum();
+    fn latency(&self) -> Duration {
+        let sum: Duration = self.latencies.iter().sum();
 
         sum / self.latencies.len() as u32
     }
 
-    fn record_latency(&mut self, sample: LocalDuration) {
+    fn record_latency(&mut self, sample: Duration) {
         self.latencies.push_front(sample);
         self.latencies.truncate(MAX_RECORDED_LATENCIES);
     }
@@ -68,7 +68,7 @@ impl Peer {
 #[derive(Debug)]
 pub struct PingManager<U, C> {
     peers: HashMap<PeerId, Peer>,
-    ping_timeout: LocalDuration,
+    ping_timeout: Duration,
     /// Random number generator.
     rng: fastrand::Rng,
     upstream: U,
@@ -77,7 +77,7 @@ pub struct PingManager<U, C> {
 
 impl<U: Wire<Event> + Wakeup + Disconnect, C: Clock> PingManager<U, C> {
     /// Create a new ping manager.
-    pub fn new(ping_timeout: LocalDuration, rng: fastrand::Rng, upstream: U, clock: C) -> Self {
+    pub fn new(ping_timeout: Duration, rng: fastrand::Rng, upstream: U, clock: C) -> Self {
         let peers = HashMap::with_hasher(rng.clone().into());
 
         Self {
@@ -158,7 +158,7 @@ impl<U: Wire<Event> + Wakeup + Disconnect, C: Clock> PingManager<U, C> {
     }
 
     /// Called when a `pong` is received.
-    pub fn received_pong(&mut self, addr: PeerId, nonce: u64, now: LocalTime) -> bool {
+    pub fn received_pong(&mut self, addr: PeerId, nonce: u64, now: Instant) -> bool {
         if let Some(peer) = self.peers.get_mut(&addr) {
             match peer.state {
                 State::AwaitingPong {

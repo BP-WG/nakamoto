@@ -29,7 +29,7 @@ pub struct PeerDummy {
     pub services: ServiceFlags,
     pub protocol_version: u32,
     pub relay: bool,
-    pub time: LocalTime,
+    pub time: Instant,
 }
 
 impl PeerDummy {
@@ -40,8 +40,8 @@ impl PeerDummy {
         services: ServiceFlags,
     ) -> Self {
         let addr = (ip.into(), network.port()).into();
-        let time = LocalTime::from_secs(network.genesis().time as u64)
-            + LocalDuration::BLOCK_INTERVAL * height;
+        let time = Instant::from_secs(network.genesis().time as u64)
+            + Duration::BLOCK_INTERVAL * height;
 
         Self {
             addr,
@@ -150,7 +150,7 @@ impl Peer<Protocol> {
     ) -> Self {
         let network = cfg.network;
         let genesis = network.genesis();
-        let time = LocalTime::from_secs(genesis.time as u64);
+        let time = Instant::from_secs(genesis.time as u64);
         let clock = RefClock::from(AdjustedTime::new(time));
         let headers = NonEmpty::from((network.genesis(), headers));
         let cfheaders = NonEmpty::from((
@@ -184,11 +184,11 @@ impl Peer<Protocol> {
         }
     }
 
-    pub fn tick(&mut self, local_time: LocalTime) {
+    pub fn tick(&mut self, local_time: Instant) {
         self.protocol.tick(local_time);
     }
 
-    pub fn local_time(&self) -> LocalTime {
+    pub fn local_time(&self) -> Instant {
         self.protocol.clock.local_time()
     }
 
@@ -206,7 +206,7 @@ impl Peer<Protocol> {
         );
     }
 
-    pub fn elapse(&mut self, duration: LocalDuration) {
+    pub fn elapse(&mut self, duration: Duration) {
         let time = self.clock.local_time();
         self.clock.borrow_mut().set_local_time(time + duration);
         self.protocol.wake();

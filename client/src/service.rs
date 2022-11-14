@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use nakamoto_chain::BlockTree;
 use nakamoto_common::bitcoin::consensus::Encodable;
-use nakamoto_common::block::time::{AdjustedClock, LocalTime};
+use nakamoto_common::block::time::{AdjustedClock, Instant};
 use nakamoto_net::{DisconnectReason, Io, Link, StateMachine};
 use nakamoto_p2p as p2p;
 
@@ -82,11 +82,11 @@ where
     type Event = p2p::Event;
     type DisconnectReason = p2p::DisconnectReason;
 
-    fn initialize(&mut self, time: LocalTime) {
+    fn initialize(&mut self, time: Instant) {
         self.machine.initialize(time);
     }
 
-    fn tick(&mut self, local_time: LocalTime) {
+    fn tick(&mut self, local_time: Instant) {
         self.machine.tick(local_time);
     }
 

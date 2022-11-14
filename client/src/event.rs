@@ -589,7 +589,7 @@ mod test {
 
     use nakamoto_common::block::time::Clock as _;
     use nakamoto_common::network::Network;
-    use nakamoto_net::{DisconnectReason, Link, LocalTime, StateMachine as _};
+    use nakamoto_net::{DisconnectReason, Link, Instant, StateMachine as _};
     use nakamoto_test::assert_matches;
     use nakamoto_test::block::gen;
 
@@ -606,7 +606,7 @@ mod test {
         let mut client = mock::Client::new(network);
         let handle = client.handle();
         let events = handle.events();
-        let time = LocalTime::now();
+        let time = Instant::now();
 
         client.protocol.initialize(time);
         client.step();
@@ -685,7 +685,7 @@ mod test {
         let mut client = mock::Client::new(network);
         let handle = client.handle();
         let remote = ([44, 44, 44, 44], 8333).into();
-        let local_time = LocalTime::now();
+        let local_time = Instant::now();
         let local_addr = ([0, 0, 0, 0], 16333).into();
         let events = handle.events();
 
@@ -741,7 +741,7 @@ mod test {
         let mut client = mock::Client::new(network);
         let handle = client.handle();
         let remote = ([44, 44, 44, 44], 8333).into();
-        let local_time = LocalTime::now();
+        let local_time = Instant::now();
         let local_addr = ([0, 0, 0, 0], 16333).into();
         let events = handle.events();
 

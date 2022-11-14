@@ -17,7 +17,7 @@ pub fn connect_to_peers(
     let rng = fastrand::Rng::with_seed(seed);
     let network = Network::Mainnet;
     let headers = BITCOIN_HEADERS.tail.to_vec();
-    let time = LocalTime::from_block_time(headers.last().unwrap().time);
+    let time = Instant::from_block_time(headers.last().unwrap().time);
 
     // Alice will try to connect to enough outbound peers.
     let mut peers = peer::network(network, target * 2, rng.clone());
@@ -53,7 +53,7 @@ pub fn connect_to_peers(
         if negotiated >= target {
             break;
         }
-        if simulator.elapsed() > LocalDuration::from_mins(4) {
+        if simulator.elapsed() > Duration::from_mins(4) {
             return false;
         }
     }

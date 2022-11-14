@@ -11,7 +11,7 @@ use nakamoto_common::bitcoin::network::message::{NetworkMessage, RawNetworkMessa
 use nakamoto_common::bitcoin::network::Address;
 use nakamoto_common::block::filter::FilterHeader;
 use nakamoto_common::block::store::Genesis as _;
-use nakamoto_common::block::time::{AdjustedTime, LocalTime};
+use nakamoto_common::block::time::{AdjustedTime, Instant};
 use nakamoto_common::block::tree::{self, ImportResult};
 use nakamoto_common::block::{BlockHash, BlockHeader, Height, Transaction};
 use nakamoto_common::network::Network;
@@ -109,7 +109,7 @@ impl Default for Client {
             let tree = model::Cache::new(network.genesis());
             let cfilters = model::FilterCache::new(FilterHeader::genesis(network));
             let peers = HashMap::new();
-            let time = LocalTime::now();
+            let time = Instant::now();
             let clock = AdjustedTime::new(time);
             let rng = fastrand::Rng::new();
             let cfg = fsm::Config::default();

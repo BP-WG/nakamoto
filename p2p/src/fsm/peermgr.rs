@@ -24,7 +24,7 @@ use nakamoto_common::bitcoin::network::message_network::VersionMessage;
 use nakamoto_common::p2p::peer::{AddressSource, Source};
 use nakamoto_common::p2p::Domain;
 
-use nakamoto_common::block::time::{Clock, LocalDuration, LocalTime};
+use nakamoto_common::block::time::{Clock, Duration, Instant};
 use nakamoto_common::block::Height;
 use nakamoto_common::collections::{HashMap, HashSet};
 use nakamoto_common::source;
@@ -37,12 +37,12 @@ use super::output::{Connect, Disconnect, Wakeup, Wire};
 use super::{Hooks, Link, PeerId, Socket, Whitelist};
 
 /// Time to wait for response during peer handshake before disconnecting the peer.
-pub const HANDSHAKE_TIMEOUT: LocalDuration = LocalDuration::from_secs(12);
+pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(12);
 /// Time to wait for a new connection.
 /// TODO: Should be in config.
-pub const CONNECTION_TIMEOUT: LocalDuration = LocalDuration::from_secs(6);
+pub const CONNECTION_TIMEOUT: Duration = Duration::from_secs(6);
 /// Time to wait until idle.
-pub const IDLE_TIMEOUT: LocalDuration = LocalDuration::from_mins(1);
+pub const IDLE_TIMEOUT: Duration = Duration::from_mins(1);
 /// Target number of concurrent outbound peer connections.
 pub const TARGET_OUTBOUND_PEERS: usize = 8;
 /// Maximum number of inbound peer connections.
@@ -148,9 +148,9 @@ pub struct Config {
     /// Maximum number of inbound peer connections.
     pub max_inbound_peers: usize,
     /// Maximum time to wait between reconnection attempts.
-    pub retry_max_wait: LocalDuration,
+    pub retry_max_wait: Duration,
     /// Minimum time to wait between reconnection attempts.
-    pub retry_min_wait: LocalDuration,
+    pub retry_min_wait: Duration,
     /// Our user agent.
     pub user_agent: &'static str,
     /// Supported communication domains.
@@ -161,9 +161,9 @@ pub struct Config {
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Ord, Eq)]
 enum HandshakeState {
     /// Received "version" and waiting for "verack" message from remote.
-    ReceivedVersion { since: LocalTime },
+    ReceivedVersion { since: Instant },
     /// Received "verack". Handshake is complete.
-    ReceivedVerack { since: LocalTime },
+    ReceivedVerack { since: Instant },
 }
 
 /// A peer connection. Peers that haven't yet sent their `version` message are stored as
@@ -177,7 +177,7 @@ pub struct Connection {
     /// Whether this is an inbound or outbound peer connection.
     pub link: Link,
     /// Connected since this time.
-    pub since: LocalTime,
+    pub since: Instant,
 }
 
 /// Peer state.
@@ -186,7 +186,7 @@ pub enum Peer {
     /// A connection is being attempted.
     Connecting {
         /// Time the connection was attempted.
-        time: LocalTime,
+        time: Instant,
     },
     /// A connection is established.
     Connected {
@@ -240,11 +240,11 @@ pub struct PeerManager<U, C> {
     pub config: Config,
 
     /// Last time we were idle.
-    last_idle: Option<LocalTime>,
+    last_idle: Option<Instant>,
     /// Connection states.
     peers: HashMap<net::SocketAddr, Peer>,
     /// Peers that have been disconnected and a retry attempt is scheduled.
-    disconnected: HashMap<net::SocketAddr, (Option<LocalTime>, usize)>,
+    disconnected: HashMap<net::SocketAddr, (Option<Instant>, usize)>,
     upstream: U,
     rng: fastrand::Rng,
     hooks: Hooks,
@@ -288,9 +288,9 @@ impl<U: Wire<Event> + Wakeup + Connect + Disconnect, C: Clock> PeerManager<U, C>
     }
 
     /// A persistent peer has been disconnected.
-    fn persistent_disconnected(&mut self, addr: &net::SocketAddr, local_time: LocalTime) {
+    fn persistent_disconnected(&mut self, addr: &net::SocketAddr, local_time: Instant) {
         let (retry_at, attempts) = self.disconnected.entry(*addr).or_default();
-        let delay = LocalDuration::from_secs(2u64.saturating_pow(*attempts as u32))
+        let delay = Duration::from_secs(2u64.saturating_pow(*attempts as u32))
             .clamp(self.config.retry_min_wait, self.config.retry_max_wait);
 
         *retry_at = Some(local_time + delay);
@@ -580,7 +580,7 @@ impl<U: Wire<Event> + Wakeup + Connect + Disconnect, C: Clock> PeerManager<U, C>
     pub fn received_verack(
         &mut self,
         addr: &PeerId,
-        local_time: LocalTime,
+        local_time: Instant,
     ) -> Option<(PeerInfo, Connection)> {
         if let Some(Peer::Connected {
             peer: Some(peer),
@@ -677,7 +677,7 @@ impl<U: Wire<Event> + Wakeup + Connect + Disconnect, C: Clock> PeerManager<U, C>
         local_addr: net::SocketAddr,
         nonce: u64,
         start_height: Height,
-        local_time: LocalTime,
+        local_time: Instant,
     ) -> VersionMessage {
         let start_height = start_height as i32;
         let timestamp = local_time.block_time() as i64;
@@ -912,7 +912,7 @@ impl<U: Connect + Disconnect + Wakeup + Wire<Event>, C: Clock> PeerManager<U, C>
     }
 
     /// Peers that have been idle longer than [`CONNECTION_TIMEOUT`].
-    fn idle_peers(&self, now: LocalTime) -> impl Iterator<Item = PeerId> + '_ {
+    fn idle_peers(&self, now: Instant) -> impl Iterator<Item = PeerId> + '_ {
         self.peers.iter().filter_map(move |(addr, c)| {
             if let Peer::Connecting { time } = c {
                 if now - *time >= CONNECTION_TIMEOUT {
@@ -944,8 +944,8 @@ mod tests {
                 domains: Domain::all(),
                 user_agent: crate::fsm::USER_AGENT,
                 persistent: vec![],
-                retry_max_wait: LocalDuration::from_mins(60),
-                retry_min_wait: LocalDuration::from_secs(1),
+                retry_max_wait: Duration::from_mins(60),
+                retry_min_wait: Duration::from_secs(1),
                 services: ServiceFlags::NONE,
                 preferred_services: ServiceFlags::COMPACT_FILTERS | ServiceFlags::NETWORK,
                 required_services: ServiceFlags::NETWORK,
@@ -957,7 +957,7 @@ mod tests {
     #[test]
     fn test_persistent_client_reconnect() {
         let rng = fastrand::Rng::with_seed(1);
-        let time = RefClock::from(LocalTime::now());
+        let time = RefClock::from(Instant::now());
         let height = 144;
 
         let local = ([99, 99, 99, 99], 9999).into();
@@ -988,7 +988,7 @@ mod tests {
         assert!(peermgr.is_disconnected(&remote));
         assert_eq!(peermgr.connected().next(), None);
 
-        time.elapse(LocalDuration::from_secs(1));
+        time.elapse(Duration::from_secs(1));
         peermgr.received_wake(&mut addrs);
         assert_eq!(peermgr.connecting().next(), Some(&remote));
 
@@ -1001,11 +1001,11 @@ mod tests {
         assert!(peermgr.is_disconnected(&remote));
         assert_eq!(peermgr.connecting().next(), None);
 
-        time.elapse(LocalDuration::from_secs(1));
+        time.elapse(Duration::from_secs(1));
         peermgr.received_wake(&mut addrs);
         assert_eq!(peermgr.connecting().next(), None);
 
-        time.elapse(LocalDuration::from_secs(1));
+        time.elapse(Duration::from_secs(1));
         peermgr.received_wake(&mut addrs);
         assert_eq!(peermgr.connecting().next(), Some(&remote));
     }
@@ -1013,7 +1013,7 @@ mod tests {
     #[test]
     fn test_wtxidrelay_outbound() {
         let rng = fastrand::Rng::with_seed(1);
-        let time = LocalTime::now();
+        let time = Instant::now();
 
         let mut addrs = VecDeque::new();
         let mut peermgr = PeerManager::new(util::config(), rng.clone(), Hooks::default(), (), time);
@@ -1048,7 +1048,7 @@ mod tests {
     #[test]
     fn test_wtxidrelay_misbehavior() {
         let rng = fastrand::Rng::with_seed(1);
-        let time = LocalTime::now();
+        let time = Instant::now();
 
         let mut addrs = VecDeque::new();
         let mut peermgr = PeerManager::new(util::config(), rng.clone(), Hooks::default(), (), time);
@@ -1074,7 +1074,7 @@ mod tests {
     #[test]
     fn test_connect_timeout() {
         let rng = fastrand::Rng::with_seed(1);
-        let time = RefClock::from(LocalTime::now());
+        let time = RefClock::from(Instant::now());
 
         let remote = ([124, 43, 110, 1], 8333).into();
 
@@ -1087,7 +1087,7 @@ mod tests {
         assert_eq!(peermgr.connecting().next(), Some(&remote));
         assert_eq!(peermgr.connecting().count(), 1);
 
-        time.elapse(LocalDuration::from_secs(1));
+        time.elapse(Duration::from_secs(1));
         peermgr.received_wake(&mut addrs);
 
         assert_eq!(peermgr.connecting().next(), Some(&remote));
@@ -1106,7 +1106,7 @@ mod tests {
     #[test]
     fn test_peer_dropped() {
         let rng = fastrand::Rng::with_seed(1);
-        let time = LocalTime::now();
+        let time = Instant::now();
         let mut addrs = VecDeque::new();
         let mut peermgr = PeerManager::new(util::config(), rng.clone(), Hooks::default(), (), time);
 
@@ -1145,7 +1145,7 @@ mod tests {
     #[test]
     fn test_disconnects() {
         let rng = fastrand::Rng::with_seed(1);
-        let time = LocalTime::now();
+        let time = Instant::now();
         let height = 144;
 
         let services = ServiceFlags::NETWORK;
@@ -1221,7 +1221,7 @@ mod tests {
             ..util::config()
         };
         let rng = fastrand::Rng::with_seed(1);
-        let time = LocalTime::now();
+        let time = Instant::now();
         let local = ([99, 99, 99, 99], 9999).into();
 
         let cases: Vec<((usize, usize, usize, usize), usize)> = vec![

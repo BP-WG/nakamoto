@@ -21,7 +21,7 @@ use nakamoto_common::bitcoin::network::message_filter::{
 };
 use nakamoto_common::bitcoin::network::message_network::VersionMessage;
 use nakamoto_common::bitcoin::Transaction;
-use nakamoto_common::block::time::LocalDuration;
+use nakamoto_common::block::time::Duration;
 use nakamoto_common::block::{BlockHash, BlockHeader, BlockTime, Height};
 
 use crate::fsm::{Event, PeerId};
@@ -41,7 +41,7 @@ impl From<Event> for Io {
 /// Ability to connect to peers.
 pub trait Connect {
     /// Connect to peer.
-    fn connect(&self, addr: net::SocketAddr, timeout: LocalDuration);
+    fn connect(&self, addr: net::SocketAddr, timeout: Duration);
 }
 
 /// Ability to disconnect from peers.
@@ -53,7 +53,7 @@ pub trait Disconnect {
 /// The ability to be woken up in the future.
 pub trait Wakeup {
     /// Ask to be woken up in a predefined amount of time.
-    fn wakeup(&self, duration: LocalDuration) -> &Self;
+    fn wakeup(&self, duration: Duration) -> &Self;
 }
 
 /// Bitcoin wire protocol.
@@ -100,7 +100,7 @@ pub trait Wire<E> {
         addr: PeerId,
         start_height: Height,
         stop_hash: BlockHash,
-        timeout: LocalDuration,
+        timeout: Duration,
     );
 
     /// Get compact filters from a peer.
@@ -109,7 +109,7 @@ pub trait Wire<E> {
         addr: PeerId,
         start_height: Height,
         stop_hash: BlockHash,
-        timeout: LocalDuration,
+        timeout: Duration,
     );
 
     /// Send compact filter headers to a peer.
@@ -227,14 +227,14 @@ impl Disconnect for Outbox {
 }
 
 impl Wakeup for Outbox {
-    fn wakeup(&self, duration: LocalDuration) -> &Self {
+    fn wakeup(&self, duration: Duration) -> &Self {
         self.push(Io::Wakeup(duration));
         self
     }
 }
 
 impl Connect for Outbox {
-    fn connect(&self, addr: net::SocketAddr, timeout: LocalDuration) {
+    fn connect(&self, addr: net::SocketAddr, timeout: Duration) {
         self.push(Io::Connect(addr));
         self.push(Io::Wakeup(timeout));
     }
@@ -306,7 +306,7 @@ impl<E: Into<Event> + std::fmt::Display> Wire<E> for Outbox {
         addr: PeerId,
         start_height: Height,
         stop_hash: BlockHash,
-        timeout: LocalDuration,
+        timeout: Duration,
     ) {
         self.message(
             addr,
@@ -328,7 +328,7 @@ impl<E: Into<Event> + std::fmt::Display> Wire<E> for Outbox {
         addr: PeerId,
         start_height: Height,
         stop_hash: BlockHash,
-        timeout: LocalDuration,
+        timeout: Duration,
     ) {
         self.message(
             addr,
@@ -394,7 +394,7 @@ impl<E> Wire<E> for () {
         addr: PeerId,
         start_height: Height,
         stop_hash: BlockHash,
-        timeout: LocalDuration,
+        timeout: Duration,
     ) {
     }
     fn get_cfheaders(
@@ -402,7 +402,7 @@ impl<E> Wire<E> for () {
         addr: PeerId,
         start_height: Height,
         stop_hash: BlockHash,
-        timeout: LocalDuration,
+        timeout: Duration,
     ) {
     }
 }
@@ -410,7 +410,7 @@ impl<E> Wire<E> for () {
 #[cfg(test)]
 #[allow(unused_variables)]
 impl Connect for () {
-    fn connect(&self, addr: net::SocketAddr, timeout: LocalDuration) {}
+    fn connect(&self, addr: net::SocketAddr, timeout: Duration) {}
 }
 
 #[cfg(test)]
@@ -422,7 +422,7 @@ impl Disconnect for () {
 #[cfg(test)]
 #[allow(unused_variables)]
 impl Wakeup for () {
-    fn wakeup(&self, duration: LocalDuration) -> &Self {
+    fn wakeup(&self, duration: Duration) -> &Self {
         &()
     }
 }

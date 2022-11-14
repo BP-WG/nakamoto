@@ -59,7 +59,7 @@ use nakamoto_common::bitcoin::network::Address;
 use nakamoto_common::bitcoin::Script;
 use nakamoto_common::block::filter::Filters;
 use nakamoto_common::block::time::AdjustedClock;
-use nakamoto_common::block::time::{LocalDuration, LocalTime};
+use nakamoto_common::block::time::{Duration, Instant};
 use nakamoto_common::block::tree::{self, BlockReader, BlockTree, ImportResult};
 use nakamoto_common::block::{BlockHash, Height};
 use nakamoto_common::block::{BlockTime, Transaction};
@@ -194,7 +194,7 @@ pub struct Peer {
     /// Whether this is an inbound or outbound peer connection.
     pub link: Link,
     /// Connected since this time.
-    pub since: LocalTime,
+    pub since: Instant,
     /// The peer's best height.
     pub height: Height,
     /// The peer's services.
@@ -378,7 +378,7 @@ pub struct StateMachine<T, F, P, C> {
     clock: C,
     /// Last time a "tick" was triggered.
     #[allow(dead_code)]
-    last_tick: LocalTime,
+    last_tick: Instant,
     /// Random number generator.
     rng: fastrand::Rng,
     /// Outbound I/O. Used to communicate protocol events with a reactor.
@@ -430,7 +430,7 @@ pub struct Config {
     /// Our user agent.
     pub user_agent: &'static str,
     /// Ping timeout, after which remotes are disconnected.
-    pub ping_timeout: LocalDuration,
+    pub ping_timeout: Duration,
     /// State machine event hooks.
     pub hooks: Hooks,
     /// Configured limits.
@@ -546,8 +546,8 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
                 domains: domains.clone(),
                 target_outbound_peers: limits.max_outbound_peers,
                 max_inbound_peers: limits.max_inbound_peers,
-                retry_max_wait: LocalDuration::from_mins(60),
-                retry_min_wait: LocalDuration::from_secs(1),
+                retry_max_wait: Duration::from_mins(60),
+                retry_min_wait: Duration::from_secs(1),
                 required_services,
                 preferred_services: syncmgr::REQUIRED_SERVICES | cbfmgr::REQUIRED_SERVICES,
                 services,
@@ -581,7 +581,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
             cbfmgr,
             peermgr,
             invmgr,
-            last_tick: LocalTime::default(),
+            last_tick: Instant::default(),
             rng,
             outbox,
             hooks,
@@ -763,7 +763,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> traits:
     type Event = Event;
     type DisconnectReason = DisconnectReason;
 
-    fn initialize(&mut self, time: LocalTime) {
+    fn initialize(&mut self, time: Instant) {
         self.clock.set(time);
         self.outbox.event(Event::Initializing);
         self.addrmgr.initialize();
@@ -990,7 +990,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> traits:
         self.invmgr.peer_disconnected(addr);
     }
 
-    fn tick(&mut self, local_time: LocalTime) {
+    fn tick(&mut self, local_time: Instant) {
         trace!("Received tick");
 
         self.clock.set(local_time);
@@ -1009,7 +1009,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> traits:
         #[cfg(not(test))]
         let local_time = self.clock.local_time();
         #[cfg(not(test))]
-        if local_time - self.last_tick >= LocalDuration::from_secs(10) {
+        if local_time - self.last_tick >= Duration::from_secs(10) {
             let (tip, _) = self.tree.tip();
             let height = self.tree.height();
             let best = self

@@ -14,7 +14,7 @@ use nakamoto_common::bitcoin::network::message_filter::{CFHeaders, CFilter, GetC
 use nakamoto_common::bitcoin::{Script, Transaction, Txid};
 
 use nakamoto_common::block::filter::{self, BlockFilter, Filters};
-use nakamoto_common::block::time::{Clock, LocalDuration, LocalTime};
+use nakamoto_common::block::time::{Clock, Duration, Instant};
 use nakamoto_common::block::tree::BlockReader;
 use nakamoto_common::block::{BlockHash, Height};
 use nakamoto_common::collections::{AddressBook, HashMap};
@@ -27,7 +27,7 @@ use super::{DisconnectReason, Link, PeerId, Socket};
 use rescan::Rescan;
 
 /// Idle timeout.
-pub const IDLE_TIMEOUT: LocalDuration = LocalDuration::from_secs(60);
+pub const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Services required from peers for BIP 158 functionality.
 pub const REQUIRED_SERVICES: ServiceFlags = ServiceFlags::COMPACT_FILTERS;
@@ -42,7 +42,7 @@ pub const MAX_MESSAGE_CFILTERS: usize = 1000;
 pub const DEFAULT_FILTER_CACHE_SIZE: usize = 1024 * 1024; // 1 MB.
 
 /// How long to wait to receive a reply from a peer.
-pub const DEFAULT_REQUEST_TIMEOUT: LocalDuration = LocalDuration::from_secs(6);
+pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(6);
 
 /// An error originating in the CBF manager.
 #[derive(Error, Debug)]
@@ -258,7 +258,7 @@ pub enum GetFiltersError {
 #[derive(Debug)]
 pub struct Config {
     /// How long to wait for a response from a peer.
-    pub request_timeout: LocalDuration,
+    pub request_timeout: Duration,
     /// Filter cache size, in bytes.
     pub filter_cache_size: usize,
 }
@@ -278,7 +278,7 @@ struct Peer {
     #[allow(dead_code)]
     height: Height,
     #[allow(dead_code)]
-    last_active: LocalTime,
+    last_active: Instant,
     #[allow(dead_code)]
     socket: Socket,
     persistent: bool,
@@ -297,12 +297,12 @@ pub struct FilterManager<F, U, C> {
     upstream: U,
     clock: C,
     /// Last time we idled.
-    last_idle: Option<LocalTime>,
+    last_idle: Option<Instant>,
     /// Last time a filter was processed.
     /// We use this to figure out when to re-issue filter requests.
-    last_processed: Option<LocalTime>,
+    last_processed: Option<Instant>,
     /// Inflight requests.
-    inflight: HashMap<BlockHash, (Height, PeerId, LocalTime)>,
+    inflight: HashMap<BlockHash, (Height, PeerId, Instant)>,
 }
 
 impl<F: Filters, U: Wire<Event> + Wakeup + Disconnect, C: Clock> FilterManager<F, U, C> {
@@ -994,7 +994,7 @@ impl<F: Filters, U: Wire<Event> + Wakeup + Disconnect, C: Clock> FilterManager<F
 
     fn schedule_wake(&mut self) {
         self.last_idle = None; // Disable rate-limiting for the next tick.
-        self.upstream.wakeup(LocalDuration::from_secs(1));
+        self.upstream.wakeup(Duration::from_secs(1));
     }
 }
 
@@ -1210,7 +1210,7 @@ mod tests {
     fn test_receive_filters() {
         let network = Network::Mainnet;
         let peer = &([0, 0, 0, 0], 0).into();
-        let time = LocalTime::now();
+        let time = Instant::now();
         let clock = RefClock::from(time);
         let tree = {
             let genesis = network.genesis();
@@ -1286,7 +1286,7 @@ mod tests {
     fn test_not_connected() {
         let best = 144;
         let mut rng = fastrand::Rng::new();
-        let time = LocalTime::now();
+        let time = Instant::now();
         let network = Network::Regtest;
         let remote: PeerId = ([8, 8, 8, 8], 8333).into();
         let (mut cbfmgr, tree, _) = util::setup(network, best, 0, RefClock::from(time));
@@ -1346,7 +1346,7 @@ mod tests {
         let birth = 11;
         let best = 42;
         let mut rng = fastrand::Rng::new();
-        let time = LocalTime::now();
+        let time = Instant::now();
         let network = Network::Regtest;
         let (mut cbfmgr, tree, chain) = util::setup(network, best, 0, RefClock::from(time));
         let remote: PeerId = ([88, 88, 88, 88], 8333).into();
@@ -1410,7 +1410,7 @@ mod tests {
         let birth = 11;
         let best = 42;
         let mut rng = fastrand::Rng::new();
-        let time = LocalTime::now();
+        let time = Instant::now();
         let network = Network::Regtest;
         let filter_type = 0x0;
         let (mut cbfmgr, tree, chain) = util::setup(network, best, 0, RefClock::from(time));
@@ -1498,7 +1498,7 @@ mod tests {
         let network = Network::Regtest;
         let remote: PeerId = ([88, 88, 88, 88], 8333).into();
         let mut rng = fastrand::Rng::with_seed(772092983);
-        let time = LocalTime::now();
+        let time = Instant::now();
 
         let mut cbfmgr = {
             let cache = FilterCache::load(store::memory::Memory::genesis(network)).unwrap();
@@ -1571,7 +1571,7 @@ mod tests {
         let birth: u64 = *cache_range.start();
         let best: u64 = *cache_range.end();
 
-        let time = LocalTime::now();
+        let time = Instant::now();
         let (mut cbfmgr, mut tree, chain) =
             util::setup(network, best, DEFAULT_FILTER_CACHE_SIZE, time);
         let (watch, _) = gen::watchlist(birth, chain.iter());
@@ -1664,7 +1664,7 @@ mod tests {
         let birth: u64 = *cache_range.start();
         let best: u64 = *cache_range.end();
 
-        let time = LocalTime::now();
+        let time = Instant::now();
         let (mut cbfmgr, tree, chain) = util::setup(network, best, DEFAULT_FILTER_CACHE_SIZE, time);
         let (watch, _) = gen::watchlist(birth, chain.iter());
 
@@ -1777,7 +1777,7 @@ mod tests {
         let birth: u64 = *cache_range.start();
         let best: u64 = *cache_range.end();
 
-        let time = LocalTime::now();
+        let time = Instant::now();
         let (mut cbfmgr, mut tree, chain) =
             util::setup(network, best, DEFAULT_FILTER_CACHE_SIZE, time);
         let (watch, _) = gen::watchlist(birth, chain.iter());
@@ -1868,7 +1868,7 @@ mod tests {
         let birth: u64 = 5;
         let best: u64 = 9;
 
-        let time = LocalTime::now();
+        let time = Instant::now();
         let (mut cbfmgr, tree, chain) = util::setup(network, best, DEFAULT_FILTER_CACHE_SIZE, time);
         let (watch, _) = gen::watchlist(birth, chain.iter());
 
@@ -1946,7 +1946,7 @@ mod tests {
         let birth = 11;
         let best = 17;
 
-        let time = LocalTime::now();
+        let time = Instant::now();
         let (mut cbfmgr, tree, chain) = util::setup(network, best, DEFAULT_FILTER_CACHE_SIZE, time);
 
         // Generate a watchlist and keep track of the matching block heights.
@@ -2042,7 +2042,7 @@ mod tests {
             let network = Network::Regtest;
             let remote: PeerId = ([88, 88, 88, 88], 8333).into();
 
-            let time = LocalTime::now();
+            let time = Instant::now();
             let (mut cbfmgr, mut tree, chain) = util::setup(network, best, 0, time);
 
             // Generate a watchlist and keep track of the matching block heights.
@@ -2161,7 +2161,7 @@ mod tests {
         let network = Network::Regtest;
         let remote: PeerId = ([88, 88, 88, 88], 8333).into();
 
-        let time = LocalTime::now();
+        let time = Instant::now();
         let (mut cbfmgr, tree, chain) = util::setup(network, best, cache, time);
         let tip = chain.last().block_hash();
 

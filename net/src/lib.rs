@@ -4,16 +4,15 @@ use std::borrow::Cow;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::{fmt, io, net};
+use std::time::{Duration, Instant};
 
 use crossbeam_channel as chan;
 
 pub mod error;
 pub mod event;
 pub mod simulator;
-pub mod time;
 
 pub use event::Publisher;
-pub use time::{LocalDuration, LocalTime};
 
 /// Link direction of the peer connection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,7 +45,7 @@ pub enum Io<M, E, D, Id: PeerId = net::SocketAddr> {
     /// Disconnect from a peer.
     Disconnect(Id, D),
     /// Ask for a wakeup in a specified amount of time.
-    Wakeup(LocalDuration),
+    Wakeup(Duration),
     /// Emit an event.
     Event(E),
 }
@@ -125,7 +124,7 @@ pub trait StateMachine<Id: PeerId = net::SocketAddr>:
         + Into<DisconnectReason<Self::DisconnectReason>>;
 
     /// Initialize the state machine. Called once before any event is sent to the state machine.
-    fn initialize(&mut self, _time: LocalTime) {
+    fn initialize(&mut self, _time: Instant) {
         // "He was alone. He was unheeded, happy and near to the wild heart of life. He was alone
         // and young and wilful and wildhearted, alone amid a waste of wild air and brackish waters
         // and the sea-harvest of shells and tangle and veiled grey sunlight and gayclad lightclad
@@ -148,7 +147,7 @@ pub trait StateMachine<Id: PeerId = net::SocketAddr>:
     ///
     /// "a regular short, sharp sound, especially that made by a clock or watch, typically
     /// every second."
-    fn tick(&mut self, local_time: LocalTime);
+    fn tick(&mut self, local_time: Instant);
     /// Used to advance the state machine after some timer rings.
     fn wake(&mut self);
 }

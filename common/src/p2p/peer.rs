@@ -9,7 +9,7 @@ use bitcoin::network::address::Address;
 use bitcoin::network::constants::ServiceFlags;
 
 use crate::block::time::Clock;
-use crate::net::time::LocalTime;
+use crate::net::time::Instant;
 
 /// Peer store.
 ///
@@ -203,18 +203,18 @@ pub struct KnownAddress {
     /// Address of the peer who sent us this address.
     pub source: Source,
     /// Last time this address was used to successfully connect to a peer.
-    pub last_success: Option<LocalTime>,
+    pub last_success: Option<Instant>,
     /// Last time this address was sampled.
-    pub last_sampled: Option<LocalTime>,
+    pub last_sampled: Option<Instant>,
     /// Last time this address was tried.
-    pub last_attempt: Option<LocalTime>,
+    pub last_attempt: Option<Instant>,
     /// Last time this peer was seen alive.
-    pub last_active: Option<LocalTime>,
+    pub last_active: Option<Instant>,
 }
 
 impl KnownAddress {
     /// Create a new known address.
-    pub fn new(addr: Address, source: Source, last_active: Option<LocalTime>) -> Self {
+    pub fn new(addr: Address, source: Source, last_active: Option<Instant>) -> Self {
         Self {
             addr,
             source,
@@ -297,25 +297,25 @@ impl KnownAddress {
         };
         let last_success = match obj.get("last_success") {
             Some(Value::Null) => None,
-            Some(Value::Number(Number::U64(n))) => Some(LocalTime::from_block_time(*n as u32)),
+            Some(Value::Number(Number::U64(n))) => Some(Instant::from_block_time(*n as u32)),
             None => None,
             _ => return Err(serde::Error),
         };
         let last_attempt = match obj.get("last_attempt") {
             Some(Value::Null) => None,
-            Some(Value::Number(Number::U64(n))) => Some(LocalTime::from_block_time(*n as u32)),
+            Some(Value::Number(Number::U64(n))) => Some(Instant::from_block_time(*n as u32)),
             None => None,
             _ => return Err(serde::Error),
         };
         let last_sampled = match obj.get("last_sampled") {
             Some(Value::Null) => None,
-            Some(Value::Number(Number::U64(n))) => Some(LocalTime::from_block_time(*n as u32)),
+            Some(Value::Number(Number::U64(n))) => Some(Instant::from_block_time(*n as u32)),
             None => None,
             _ => return Err(serde::Error),
         };
         let last_active = match obj.get("last_active") {
             Some(Value::Null) => None,
-            Some(Value::Number(Number::U64(n))) => Some(LocalTime::from_block_time(*n as u32)),
+            Some(Value::Number(Number::U64(n))) => Some(Instant::from_block_time(*n as u32)),
             None => None,
             _ => return Err(serde::Error),
         };
@@ -389,8 +389,8 @@ mod tests {
         let ka = KnownAddress {
             addr: Address::new(&sockaddr, services),
             source: Source::Peer(net::SocketAddr::from(([4, 5, 6, 7], 8333))),
-            last_success: Some(LocalTime::from_secs(42)),
-            last_sampled: Some(LocalTime::from_secs(144)),
+            last_success: Some(Instant::from_secs(42)),
+            last_sampled: Some(Instant::from_secs(144)),
             last_attempt: None,
             last_active: None,
         };

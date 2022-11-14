@@ -1,13 +1,14 @@
 //! A simple P2P network simulator. Acts as the _reactor_, but without doing any I/O.
 #![allow(clippy::collapsible_if)]
 
-use crate::{DisconnectReason, Io, Link, LocalDuration, LocalTime};
+use crate::{DisconnectReason, Io, Link};
 use log::*;
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::ops::{Deref, DerefMut, Range};
 use std::{fmt, io, net};
+use std::time::{Duration, Instant};
 
 use crate::StateMachine;
 
@@ -15,7 +16,7 @@ use crate::StateMachine;
 pub mod arbitrary;
 
 /// Minimum latency between peers.
-pub const MIN_LATENCY: LocalDuration = LocalDuration::from_millis(1);
+pub const MIN_LATENCY: Duration = Duration::from_millis(1);
 /// Maximum number of events buffered per peer.
 pub const MAX_EVENTS: usize = 2048;
 
@@ -108,12 +109,12 @@ impl<M: fmt::Debug, D: fmt::Display> fmt::Display for Scheduled<M, D> {
 pub struct Inbox<M, D> {
     /// The set of scheduled inputs. We use a `BTreeMap` to ensure inputs are always
     /// ordered by scheduled delivery time.
-    messages: BTreeMap<LocalTime, Scheduled<M, D>>,
+    messages: BTreeMap<Instant, Scheduled<M, D>>,
 }
 
 impl<M: Clone, D: Clone> Inbox<M, D> {
     /// Add a scheduled input to the inbox.
-    fn insert(&mut self, mut time: LocalTime, msg: Scheduled<M, D>) {
+    fn insert(&mut self, mut time: Instant, msg: Scheduled<M, D>) {
         // Make sure we don't overwrite an existing message by using the same time slot.
         while self.messages.contains_key(&time) {
             time = time + MIN_LATENCY;
@@ -122,7 +123,7 @@ impl<M: Clone, D: Clone> Inbox<M, D> {
     }
 
     /// Get the next scheduled input to be delivered.
-    fn next(&mut self) -> Option<(LocalTime, Scheduled<M, D>)> {
+    fn next(&mut self) -> Option<(Instant, Scheduled<M, D>)> {
         self.messages
             .iter()
             .next()
@@ -134,7 +135,7 @@ impl<M: Clone, D: Clone> Inbox<M, D> {
         &self,
         node: &NodeId,
         remote: &net::SocketAddr,
-    ) -> Option<(&LocalTime, &Scheduled<M, D>)> {
+    ) -> Option<(&Instant, &Scheduled<M, D>)> {
         self.messages
             .iter()
             .rev()
@@ -173,7 +174,7 @@ where
     /// Priority events that should happen immediately.
     priority: VecDeque<Scheduled<<T::Message as ToOwned>::Owned, T::DisconnectReason>>,
     /// Simulated latencies between nodes.
-    latencies: BTreeMap<(NodeId, NodeId), LocalDuration>,
+    latencies: BTreeMap<(NodeId, NodeId), Duration>,
     /// Network partitions between two nodes.
     partitions: BTreeSet<(NodeId, NodeId)>,
     /// Set of existing connections between nodes.
@@ -183,9 +184,9 @@ where
     /// Simulation options.
     opts: Options,
     /// Start time of simulation.
-    start_time: LocalTime,
+    start_time: Instant,
     /// Current simulation time. Updated when a scheduled message is processed.
-    time: LocalTime,
+    time: Instant,
     /// RNG.
     rng: fastrand::Rng,
 }
@@ -198,7 +199,7 @@ where
     <T::Message as ToOwned>::Owned: fmt::Debug + Clone,
 {
     /// Create a new simulation.
-    pub fn new(time: LocalTime, rng: fastrand::Rng, opts: Options) -> Self {
+    pub fn new(time: Instant, rng: fastrand::Rng, opts: Options) -> Self {
         Self {
             inbox: Inbox {
                 messages: BTreeMap::new(),
@@ -223,7 +224,7 @@ where
 
     /// Total amount of simulated time elapsed.
     #[allow(dead_code)]
-    pub fn elapsed(&self) -> LocalDuration {
+    pub fn elapsed(&self) -> Duration {
         self.time - self.start_time
     }
 
@@ -242,7 +243,7 @@ where
     }
 
     /// Get the latency between two nodes. The minimum latency between nodes is 1 millisecond.
-    pub fn latency(&self, from: NodeId, to: NodeId) -> LocalDuration {
+    pub fn latency(&self, from: NodeId, to: NodeId) -> Duration {
         self.latencies
             .get(&(from, to))
             .cloned()
@@ -252,14 +253,14 @@ where
                 } else {
                     // Create variance in the latency. The resulting latency
                     // will be between half, and two times the base latency.
-                    let millis = l.as_millis();
+                    let millis = l.as_millis() as u64;
 
                     if self.rng.bool() {
                         // More latency.
-                        LocalDuration::from_millis(millis + self.rng.u128(0..millis))
+                        l + Duration::from_millis(self.rng.u64(0..millis))
                     } else {
                         // Less latency.
-                        LocalDuration::from_millis(millis - self.rng.u128(0..millis / 2))
+                        l - Duration::from_millis(self.rng.u64(0..millis / 2))
                     }
                 }
             })
@@ -303,9 +304,9 @@ where
             for (i, from) in nodes.keys().enumerate() {
                 for to in nodes.keys().skip(i + 1) {
                     let range = self.opts.latency.clone();
-                    let latency = LocalDuration::from_millis(
+                    let latency = Duration::from_millis(
                         self.rng
-                            .u128(range.start as u128 * 1_000..range.end as u128 * 1_000),
+                            .u64(range.start * 1_000..range.end * 1_000),
                     );
 
                     self.latencies.entry((*from, *to)).or_insert(latency);
@@ -319,7 +320,7 @@ where
         // between individual nodes. We need to think about more realistic
         // scenarios. We should also think about creating various network
         // topologies.
-        if self.time.as_secs() % 10 == 0 {
+        if self.time % 10 == 0 {
             for (i, x) in nodes.keys().enumerate() {
                 for y in nodes.keys().skip(i + 1) {
                     if self.is_fallible() {
@@ -454,7 +455,7 @@ where
 
                 info!(
                     target: "sim",
-                    "{:05} {} -> {}: ({:?}) ({})",
+                    "{:05} {} -> {}: ({:?}) ({:?})",
                     elapsed, sender, receiver, &msg, latency
                 );
 

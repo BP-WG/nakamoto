@@ -1,7 +1,7 @@
 //! State machine events.
 use nakamoto_common::bitcoin::network::message::NetworkMessage;
 
-use crate::fsm::{self, Height, LocalTime, PeerId};
+use crate::fsm::{self, Height, Instant, PeerId};
 
 /// A peer-to-peer event.
 #[derive(Debug, Clone)]
@@ -15,7 +15,7 @@ pub enum Event {
         /// Filter header height.
         filter_height: Height,
         /// Local time.
-        time: LocalTime,
+        time: Instant,
     },
     /// Received a message from a peer.
     Received(PeerId, NetworkMessage),
